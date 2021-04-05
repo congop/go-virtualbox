@@ -3,11 +3,14 @@ package virtualbox
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // MachineState stores the last retrieved VM state.
@@ -63,18 +66,20 @@ func (f Flag) Get(o Flag) string {
 
 // Machine information.
 type Machine struct {
-	Name       string
-	UUID       string
-	State      MachineState
-	CPUs       uint
-	Memory     uint // main memory (in MB)
-	VRAM       uint // video memory (in MB)
-	CfgFile    string
-	BaseFolder string
-	OSType     string
-	Flag       Flag
-	BootOrder  []string // max 4 slots, each in {none|floppy|dvd|disk|net}
-	NICs       []NIC
+	Name               string
+	UUID               string
+	State              MachineState
+	CPUs               uint
+	Memory             uint // main memory (in MB)
+	VRAM               uint // video memory (in MB)
+	CfgFile            string
+	BaseFolder         string
+	OSType             string
+	Flag               Flag
+	BootOrder          []string // max 4 slots, each in {none|floppy|dvd|disk|net}
+	NICs               []NIC
+	UARTs              UARTs
+	StorageControllers StorageControllers
 }
 
 // New creates a new machine.
@@ -82,6 +87,7 @@ func New() *Machine {
 	return &Machine{
 		BootOrder: make([]string, 0, 4),
 		NICs:      make([]NIC, 0, 4),
+		UARTs:     *NewUARTsAllOff(),
 	}
 }
 
@@ -204,26 +210,10 @@ func (m *Machine) Delete() error {
 
 var mutex sync.Mutex
 
-// GetMachine finds a machine by its name or UUID.
-func GetMachine(id string) (*Machine, error) {
-	/* There is a strage behavior where running multiple instances of
-	'VBoxManage showvminfo' on same VM simultaneously can return an error of
-	'object is not ready (E_ACCESSDENIED)', so we sequential the operation with a mutex.
-	Note if you are running multiple process of go-virtualbox or 'showvminfo'
-	in the command line side by side, this not gonna work. */
-	mutex.Lock()
-	stdout, stderr, err := Manage().runOutErr("showvminfo", id, "--machinereadable")
-	mutex.Unlock()
-	if err != nil {
-		if reMachineNotFound.FindString(stderr) != "" {
-			return nil, ErrMachineNotExist
-		}
-		return nil, err
-	}
-
+func vminfoAsPropMap(vmInfo io.Reader) (map[string]string, error) {
 	/* Read all VM info into a map */
 	propMap := make(map[string]string)
-	s := bufio.NewScanner(strings.NewReader(stdout))
+	s := bufio.NewScanner(vmInfo)
 	for s.Scan() {
 		res := reVMInfoLine.FindStringSubmatch(s.Text())
 		if res == nil {
@@ -238,6 +228,35 @@ func GetMachine(id string) (*Machine, error) {
 			val = res[4]
 		}
 		propMap[key] = val
+	}
+	if err := s.Err(); err != nil {
+		return nil, errors.Wrap(err, "error parsing vminfo into map")
+	}
+	return propMap, nil
+}
+
+// GetMachine finds a machine by its name or UUID.
+func GetMachine(id string) (*Machine, error) {
+	/* There is a strage behavior where running multiple instances of
+	'VBoxManage showvminfo' on same VM simultaneously can return an error of
+	'object is not ready (E_ACCESSDENIED)', so we sequential the operation with a mutex.
+	Note if you are running multiple process of go-virtualbox or 'showvminfo'
+	in the command line side by side, this not gonna work. */
+	mutex.Lock()
+	stdout, stderr, err := Manage().runOutErr("showvminfo", id, "--machinereadable")
+	mutex.Unlock()
+	if err != nil {
+		if reMachineNotFound.FindString(stderr) != "" {
+			return nil, ErrMachineNotExist
+		}
+		return nil, errors.Wrapf(err, "Error with showvminfo for id=%s, \nstderr:%s",
+			id, stderr)
+	}
+
+	/* Read all VM info into a map */
+	propMap, err := vminfoAsPropMap(strings.NewReader(stdout))
+	if err != nil {
+		return nil, err
 	}
 
 	/* Extract basic info */
@@ -273,11 +292,11 @@ func GetMachine(id string) (*Machine, error) {
 		nic.Network = NICNetwork(nicType)
 		nic.Hardware = NICHardware(propMap[fmt.Sprintf("nictype%d", i)])
 		if nic.Hardware == "" {
-			return nil, fmt.Errorf("Could not find corresponding 'nictype%d'", i)
+			return nil, fmt.Errorf("could not find corresponding 'nictype%d'", i)
 		}
 		nic.MacAddr = propMap[fmt.Sprintf("macaddress%d", i)]
 		if nic.MacAddr == "" {
-			return nil, fmt.Errorf("Could not find corresponding 'macaddress%d'", i)
+			return nil, fmt.Errorf("could not find corresponding 'macaddress%d'", i)
 		}
 		if nic.Network == NICNetHostonly {
 			nic.HostInterface = propMap[fmt.Sprintf("hostonlyadapter%d", i)]
@@ -287,9 +306,21 @@ func GetMachine(id string) (*Machine, error) {
 		m.NICs = append(m.NICs, nic)
 	}
 
-	if err := s.Err(); err != nil {
-		return nil, err
+	pUARTs, errNewUART := NewUARTs(propMap)
+	if errNewUART != nil {
+		return nil, errors.Wrap(errNewUART, "Error reading UARTs data vfrom vm info")
 	}
+	m.UARTs = *pUARTs
+
+	scs, err := NewStorageControllersFromProps(propMap)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read storage controllers")
+	}
+	m.StorageControllers = *scs
+
+	// if err := s.Err(); err != nil {
+	// 	return nil, err
+	// }
 	return m, nil
 }
 
@@ -324,9 +355,9 @@ func ListMachines() ([]*Machine, error) {
 }
 
 // CreateMachine creates a new machine. If basefolder is empty, use default.
-func CreateMachine(name, basefolder string) (*Machine, error) {
-	if name == "" {
-		return nil, fmt.Errorf("machine name is empty")
+func CreateMachine(uuid, name, basefolder string) (*Machine, error) {
+	if name == "" || uuid == "" {
+		return nil, fmt.Errorf("machine name(=%s) or uuid(=%s) is empty", name, uuid)
 	}
 
 	// Check if a machine with the given name already exists.
@@ -341,7 +372,7 @@ func CreateMachine(name, basefolder string) (*Machine, error) {
 	}
 
 	// Create and register the machine.
-	args := []string{"createvm", "--name", name, "--register"}
+	args := []string{"createvm", "--uuid", uuid, "--name", name, "--register"}
 	if basefolder != "" {
 		args = append(args, "--basefolder", basefolder)
 	}
@@ -377,7 +408,8 @@ func (m *Machine) Modify() error {
 		"--cpuhotplug", m.Flag.Get(CPUHOTPLUG),
 		"--pae", m.Flag.Get(PAE),
 		"--longmode", m.Flag.Get(LONGMODE),
-		"--synthcpu", m.Flag.Get(SYNTHCPU),
+		//TODO check cause error VBoxManage: error: Unknown option: --synthcpu
+		//"--synthcpu", m.Flag.Get(SYNTHCPU),
 		"--hpet", m.Flag.Get(HPET),
 		"--hwvirtex", m.Flag.Get(HWVIRTEX),
 		"--triplefaultreset", m.Flag.Get(TRIPLEFAULTRESET),
@@ -401,6 +433,9 @@ func (m *Machine) Modify() error {
 			fmt.Sprintf("--nic%d", n), string(nic.Network),
 			fmt.Sprintf("--nictype%d", n), string(nic.Hardware),
 			fmt.Sprintf("--cableconnected%d", n), "on")
+		if nic.MacAddr != "" {
+			args = append(args, fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
+		}
 		if nic.Network == NICNetHostonly {
 			args = append(args, fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
 		} else if nic.Network == NICNetBridged {
@@ -408,9 +443,18 @@ func (m *Machine) Modify() error {
 		}
 	}
 
-	if err := Manage().run(args...); err != nil {
-		return err
+	uartsCmdParams, err := m.UARTs.ModifyVMCommandParameters()
+	if err != nil {
+		return errors.Wrap(err, "Error getting UARTs Modify VM Command Parameters")
 	}
+	args = append(args, uartsCmdParams...)
+
+	if stdout, stderr, err := Manage().runOutErr(args...); err != nil {
+		return errors.Wrapf(err,
+			"Error executing <VBoxManage modifyvm ...> \nARGS:%s\n STDOUTs=%s\nSTDERR=%s\n",
+			args, stdout, stderr)
+	}
+
 	return m.Refresh()
 }
 
@@ -432,7 +476,9 @@ func (m *Machine) SetNIC(n int, nic NIC) error {
 		fmt.Sprintf("--nictype%d", n), string(nic.Hardware),
 		fmt.Sprintf("--cableconnected%d", n), "on",
 	}
-
+	if nic.MacAddr != "" {
+		args = append(args, fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
+	}
 	if nic.Network == NICNetHostonly {
 		args = append(args, fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
 	} else if nic.Network == NICNetBridged {
@@ -469,7 +515,7 @@ func (m *Machine) AttachStorage(ctlName string, medium StorageMedium) error {
 		"--port", fmt.Sprintf("%d", medium.Port),
 		"--device", fmt.Sprintf("%d", medium.Device),
 		"--type", string(medium.DriveType),
-		"--medium", medium.Medium,
+		"--medium", medium.UUIDOrMedium(),
 	)
 }
 

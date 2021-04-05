@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGuestProperty(t *testing.T) {
@@ -26,7 +27,7 @@ func TestGuestProperty(t *testing.T) {
 
 	if ManageMock != nil {
 		ManageMock.EXPECT().isGuest().Return(false)
-		ManageMock.EXPECT().runOut("guestproperty", "get", VM, "test_key").Return("Value: test_val", nil).Times(1)
+		ManageMock.EXPECT().runOutErr("guestproperty", "get", VM, "test_key").Return("Value: test_val", "", nil).Times(1)
 	}
 	val, err := GetGuestProperty(VM, "test_key")
 	if err != nil {
@@ -52,7 +53,7 @@ func TestGuestProperty(t *testing.T) {
 	// ...and check that it is  no longer readable
 	if ManageMock != nil {
 		ManageMock.EXPECT().isGuest().Return(false)
-		ManageMock.EXPECT().runOut("guestproperty", "get", VM, "test_key").Return("", errors.New("foo")).Times(1)
+		ManageMock.EXPECT().runOutErr("guestproperty", "get", VM, "test_key").Return("", "", errors.New("foo")).Times(1)
 	}
 	_, err = GetGuestProperty(VM, "test_key")
 	if err == nil {
@@ -78,7 +79,8 @@ func TestWaitGuestProperty(t *testing.T) {
 			second := time.Second
 			time.Sleep(1 * second)
 			t.Logf(">>> key='%s', val='%s'", keyE, valE)
-			SetGuestProperty(VM, keyE, valE)
+			err := SetGuestProperty(VM, keyE, valE)
+			t.Logf(">>> failed to set guest property key='%s', val='%s', err='%v'", keyE, valE, err)
 		}()
 	}
 
@@ -117,15 +119,18 @@ func TestWaitGuestProperties(t *testing.T) {
 
 			time.Sleep(1 * second)
 			t.Logf(">>> key='%s', val='%s'", keyE, val1E)
-			SetGuestProperty(VM, keyE, val1E)
+			err := SetGuestProperty(VM, keyE, val1E)
+			assert.NoErrorf(t, err, ">>> failed to set guest property key1='%s', val='%s', err='%v'", keyE, val1E, err)
 
 			time.Sleep(1 * second)
 			t.Logf(">>> key='%s', val='%s'", keyE, val2E)
-			SetGuestProperty(VM, keyE, val2E)
+			err = SetGuestProperty(VM, keyE, val2E)
+			assert.NoErrorf(t, err, ">>> failed to set guest property key2='%s', val='%s', err='%v'", keyE, val2E, err)
 
 			time.Sleep(1 * second)
 			t.Logf(">>> key='%s', val='%s'", keyE, val1E)
-			SetGuestProperty(VM, keyE, val1E)
+			err = SetGuestProperty(VM, keyE, val1E)
+			assert.NoErrorf(t, err, ">>> failed to set guest property key1.2='%s', val='%s', err='%v'", keyE, val1E, err)
 		}()
 	}
 
@@ -172,7 +177,8 @@ func TestWaitGuestPropertiesQuit(t *testing.T) {
 
 			time.Sleep(1 * second)
 			t.Logf(">>> key='%s', val='%s'", keyE, val1E)
-			SetGuestProperty(VM, keyE, val1E)
+			err := SetGuestProperty(VM, keyE, val1E)
+			assert.NoErrorf(t, err, ">>> key='%s', val='%s'", keyE, val1E)
 		}()
 	}
 

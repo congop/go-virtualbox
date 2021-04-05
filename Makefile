@@ -30,7 +30,7 @@ PKGS := $(filter-out /vendor%,$(shell go list ./...))
 endif
 $(info PKGS=$(PKGS))
 
-default: deps test lint build-pkgs
+default: test lint build-pkgs
 
 ## Dependencies --
 
@@ -76,21 +76,15 @@ endif
 ## Linting & scanning --
 
 #GOMETALINTER_NAME := gometalinter.v2
-GOMETALINTER_NAME := gometalinter
+GOMETALINTER_NAME := golangci-lint
 GOMETALINTER := $(GOPATH)/bin/$(GOMETALINTER_NAME)$(EXE)
 
 $(GOMETALINTER):
-#	@echo PATH=$(PATH)
-ifeq ($(GOMETALINTER_NAME),gometalinter)
-	go get -u github.com/alecthomas/$(GOMETALINTER_NAME)
-else
-	go get -u gopkg.in/alecthomas/$(GOMETALINTER_NAME)
-endif
-	$(@) --install
+	build/install-golangci-lint.sh
 
 .PHONY: lint
 lint: $(GOMETALINTER)
-	$(GOMETALINTER) ./... --vendor
+	$(GOPATH)/bin/golangci-lint run
 
 ## Release -- FIXME not yet ready
 

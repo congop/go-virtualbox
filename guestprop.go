@@ -31,11 +31,15 @@ func SetGuestProperty(vm string, prop string, val string) error {
 func GetGuestProperty(vm string, prop string) (string, error) {
 	var out string
 	var err error
+	var stderr string
 	if Manage().isGuest() {
-		out, err = Manage().setOpts(sudo(true)).runOut("guestproperty", "get", prop)
+		out, stderr, err = Manage().setOpts(sudo(true)).runOutErr("guestproperty", "get", prop)
 	} else {
-		out, err = Manage().runOut("guestproperty", "get", vm, prop)
+		out, stderr, err = Manage().runOutErr("guestproperty", "get", vm, prop)
 	}
+
+	Debug("Manage() stderr: \n\tstrerr='%s' \n\tstdour='%s' \n\terr=%v", stderr, out, err)
+
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +48,11 @@ func GetGuestProperty(vm string, prop string) (string, error) {
 	var match = getRegexp.FindStringSubmatch(out)
 	Debug("match:", match)
 	if len(match) != 2 {
-		return "", fmt.Errorf("No match with get guestproperty output")
+		return "",
+			fmt.Errorf("no match with get guestproperty output:"+
+				"\nprop: %s\nout:%s",
+				prop, out,
+			)
 	}
 	return match[1], nil
 }
@@ -76,7 +84,7 @@ func WaitGuestProperty(vm string, prop string) (string, string, error) {
 	var match = waitRegexp.FindStringSubmatch(out)
 	Debug("WaitGuestProperty(): match:", match)
 	if len(match) != 3 {
-		return "", "", fmt.Errorf("No match with VBoxManage wait guestproperty output")
+		return "", "", fmt.Errorf("no match with VBoxManage wait guestproperty output")
 	}
 	return match[1], match[2], nil
 }

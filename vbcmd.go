@@ -3,6 +3,7 @@ package virtualbox
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -80,8 +81,24 @@ func (vbcmd command) run(args ...string) error {
 	defer vbcmd.setOpts(sudo(false))
 	cmd := vbcmd.prepare(args)
 	if Verbose {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		var stdout, stderr bytes.Buffer
+		// Users of this module may not have a say on stdout/stderr
+		// But they usually are able to configure logging and Debug.
+		// We are therefore giving them the opportinuty to receive the
+		// command run output
+		cmd.Stdout = io.MultiWriter(&stdout, os.Stdout)
+		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+		defer func() {
+			stdoutStr := stdout.String()
+			if stdoutStr != "" {
+				Debug("Stdout@%v =>[[ %s ]]\n", cmd.String(), stdoutStr)
+			}
+
+			stderrStr := stderr.String()
+			if stderrStr != "" {
+				Debug("Stderr@%v =>[[ %s ]] \n", cmd.String(), stderrStr)
+			}
+		}()
 	}
 	if err := cmd.Run(); err != nil {
 		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
@@ -96,7 +113,18 @@ func (vbcmd command) runOut(args ...string) (string, error) {
 	defer vbcmd.setOpts(sudo(false))
 	cmd := vbcmd.prepare(args)
 	if Verbose {
-		cmd.Stderr = os.Stderr
+		var stderr bytes.Buffer
+		// Users of this module may not have a say on stdout/stderr
+		// But they usually are able to configure logging and Debug.
+		// We are therefore giving them the opportinuty to receive the
+		// command run output
+		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+		defer func() {
+			stderrStr := stderr.String()
+			if stderrStr != "" {
+				Debug("Stderr@%v =>[[ %s ]] \n", cmd.String(), stderrStr)
+			}
+		}()
 	}
 
 	b, err := cmd.Output()
@@ -122,4 +150,9 @@ func (vbcmd command) runOutErr(args ...string) (string, string, error) {
 		}
 	}
 	return stdout.String(), stderr.String(), err
+}
+
+// RunVBoxManageCmd run VBoxManage with the given arguments.
+func RunVBoxManageCmd(args ...string) (sdterr string, stdout string, err error) {
+	return Manage().runOutErr(args...)
 }

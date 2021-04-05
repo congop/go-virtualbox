@@ -1,6 +1,7 @@
 package virtualbox_test
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -45,7 +46,8 @@ func ExampleWaitGuestProperty() {
 	go func() {
 		second := time.Second
 		time.Sleep(1 * second)
-		virtualbox.SetGuestProperty(VM, "test_name", "test_val")
+		err := virtualbox.SetGuestProperty(VM, "test_name", "test_val")
+		onErrPanic(err, "failed to SetGuestProperty(VM, test_name, test_val)")
 	}()
 
 	name, val, err := virtualbox.WaitGuestProperty(VM, "test_*")
@@ -60,13 +62,17 @@ func ExampleWaitGuestProperties() {
 		second := time.Second
 
 		time.Sleep(1 * second)
-		virtualbox.SetGuestProperty(VM, "test_name", "test_val1")
+		err := virtualbox.SetGuestProperty(VM, "test_name", "test_val1")
+
+		onErrPanic(err, ">>> failed to set guest property key='test_name', val='test_val1', err=%v", err)
 
 		time.Sleep(1 * second)
-		virtualbox.SetGuestProperty(VM, "test_name", "test_val2")
+		err = virtualbox.SetGuestProperty(VM, "test_name", "test_val2")
+		onErrPanic(err, ">>> failed to set guest property key='test_name', val='test_val2', err=%v", err)
 
 		time.Sleep(1 * second)
-		virtualbox.SetGuestProperty(VM, "test_name", "test_val1")
+		err = virtualbox.SetGuestProperty(VM, "test_name", "test_val1")
+		onErrPanic(err, ">>> failed to set guest property key='test_name', val='test_val1', err=%v", err)
 	}()
 
 	wg := new(sync.WaitGroup)
@@ -84,4 +90,11 @@ func ExampleWaitGuestProperties() {
 
 	close(done) // close channel
 	wg.Wait()   // wait for gorouting
+}
+
+func onErrPanic(err error, msg string, args ...interface{}) {
+	if err == nil {
+		return
+	}
+	panic(fmt.Sprintf(msg, args...))
 }
