@@ -3,8 +3,6 @@ package virtualbox
 import (
 	"bytes"
 	"errors"
-	"io"
-	"os"
 	"os/exec"
 	"runtime"
 )
@@ -52,7 +50,7 @@ func sudo(sudo bool) option {
 	return func(cmd Command) {
 		vbcmd := cmd.(*command)
 		vbcmd.sudo = sudo
-		Debug("Next sudo: %v", vbcmd.sudo)
+		Trace("Next sudo: %v", vbcmd.sudo)
 	}
 }
 
@@ -67,13 +65,13 @@ func (vbcmd command) path() string {
 func (vbcmd command) prepare(args []string) *exec.Cmd {
 	program := vbcmd.program
 	argv := []string{}
-	Debug("Command: '%+v', runtime.GOOS: '%s'", vbcmd, runtime.GOOS)
+	Trace("Command: '%+v', runtime.GOOS: '%s'", vbcmd, runtime.GOOS)
 	if vbcmd.sudoer && vbcmd.sudo && runtime.GOOS != osWindows {
 		program = "sudo"
 		argv = append(argv, vbcmd.program)
 	}
 	argv = append(argv, args...)
-	Debug("executing: %v %v", program, argv)
+	Trace("executing: %v %v", program, argv)
 	return exec.Command(program, argv...) // #nosec
 }
 
@@ -82,12 +80,8 @@ func (vbcmd command) run(args ...string) error {
 	cmd := vbcmd.prepare(args)
 	if Verbose {
 		var stdout, stderr bytes.Buffer
-		// Users of this module may not have a say on stdout/stderr
-		// But they usually are able to configure logging and Debug.
-		// We are therefore giving them the opportinuty to receive the
-		// command run output
-		cmd.Stdout = io.MultiWriter(&stdout, os.Stdout)
-		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
 		defer func() {
 			stdoutStr := stdout.String()
 			if stdoutStr != "" {
@@ -118,7 +112,7 @@ func (vbcmd command) runOut(args ...string) (string, error) {
 		// But they usually are able to configure logging and Debug.
 		// We are therefore giving them the opportinuty to receive the
 		// command run output
-		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+		cmd.Stderr = &stderr
 		defer func() {
 			stderrStr := stderr.String()
 			if stderrStr != "" {

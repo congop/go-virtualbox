@@ -2,6 +2,8 @@ package virtualbox
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 
@@ -205,13 +207,14 @@ const (
 
 	// UARTModeDisconnected uartmode disconnected
 	UARTModeDisconnected = UARTMode("disconnected")
+	UARTModeHostDevice   = UARTMode("hostdevice")
 )
 
 // UARTModelAllSupported returns all supported uart modes.
 func UARTModelAllSupported() []UARTMode {
 	return []UARTMode{
 		UARTModeServer, UARTModeClient,
-		UARTModeTCPClient, UARTModeServer,
+		UARTModeTCPClient, UARTModeTCPServer,
 		UARTModeFile, UARTModeDisconnected,
 	}
 }
@@ -222,7 +225,7 @@ func UARTModeFromStringIfSupported(uartModeStr string) (UARTMode, error) {
 	case "server":
 		return UARTModeServer, nil
 	case "client":
-		return UARTModeServer, nil
+		return UARTModeClient, nil
 	case "tcpserver":
 		return UARTModeTCPServer, nil
 	case "tcpclient":
@@ -231,6 +234,8 @@ func UARTModeFromStringIfSupported(uartModeStr string) (UARTMode, error) {
 		return UARTModeFile, nil
 	case "disconnected":
 		return UARTModeDisconnected, nil
+	case "hostdevice":
+		return UARTModeHostDevice, nil
 	default:
 		return "", fmt.Errorf("unsupported uart mode[%s]; supported are: %s",
 			uartModeStr, UARTModelAllSupported())
@@ -311,6 +316,29 @@ func (uarts UARTs) ModifyVMCommandParameters() ([]string, error) {
 	return cmdParams, nil
 }
 
+// ModifyVMCmdArgs return the cmd parameters given the state of the UARTs.
+// The return has the following format for each available UART
+//   [--uart<1-N> off|<I/O base> <IRQ>]
+//   [--uartmode<1-N> disconnected|
+//   server <pipe>|
+//   client <pipe>|
+//   tcpserver <port>|
+//   tcpclient <hostname:port>|
+//   file <file>|
+//   <devicename>]
+// [--uarttype<1-N> 16450|16550A|16750]
+func (uarts UARTs) ModifyVMCmdArgs() ([]CmdArg, error) {
+	cmdArgs := make([]CmdArg, 0, 32)
+	for _, uartn := range uarts {
+		cmdArgsUARTn, err := uartn.cmdArgs()
+		if err != nil {
+			return nil, err
+		}
+		cmdArgs = append(cmdArgs, cmdArgsUARTn...)
+	}
+	return cmdArgs, nil
+}
+
 // IsOff true if off false otherwise
 func (uart UART) IsOff() bool {
 	return BasicSerialComConfig{} == uart.ComConfig
@@ -343,6 +371,34 @@ func (uart UART) commandParameters() ([]string, error) {
 	return commands, nil
 }
 
+func ToCmdArgsPartsUart(key, value string) []string {
+	parts := make([]string, 0, 4)
+	vsplits := strings.Split(value, " ")
+	parts = append(parts, key)
+	parts = append(parts, vsplits...)
+	return parts
+}
+
+func (uart UART) cmdArgs() ([]CmdArg, error) {
+	if err := uart.validate(); err != nil {
+		return nil, err
+	}
+
+	commandFuncs := []func() (cmdName string, cmdValue string){
+		uart.commandParameterUartN,
+		uart.commandParameterUARTModeN,
+		uart.commandParameterUARTTypeN,
+	}
+	args := make([]CmdArg, 0, len(commandFuncs))
+	for _, commandFunc := range commandFuncs {
+		if cmdName, cmdValue := commandFunc(); cmdName != "" {
+			cmdArg := CmdArg{K: cmdName, V: &cmdValue, ToCmdArgParts: ToCmdArgsPartsUart}
+			args = append(args, cmdArg)
+		}
+	}
+	return args, nil
+}
+
 // uartNCommandParameter return an uart<1-N> parameter of this uart.
 // format [--uart<1-N> off|<I/O base> <IRQ>]
 func (uart UART) commandParameterUartN() (cmdName string, cmdValue string) {
@@ -370,6 +426,8 @@ func (uart UART) commandParameterUARTModeN() (cmdName string, cmdValue string) {
 	switch uart.Mode {
 	case UARTModeDisconnected:
 		return fmt.Sprintf("--uartmode%d", uart.Key.ToRank()), string(UARTModeDisconnected)
+	case UARTModeHostDevice:
+		return fmt.Sprintf("--uartmode%d ", uart.Key.ToRank()), uart.ModeData
 	default:
 		return fmt.Sprintf("--uartmode%d", uart.Key.ToRank()), string(uart.Mode) + " " + uart.ModeData
 
@@ -487,6 +545,19 @@ func (uart *UART) initUARTModeFromVMInfoMap(vmPropMap map[string]string) error {
 		default:
 			return fmt.Errorf("unsupported mode: %s, original vm info value:%s", modeStartValueSplits[0], modeStrValue)
 		}
+	} else if len(modeStartValueSplits) == 1 {
+		stats, err := os.Stat(modeStartValueSplits[0])
+		if err == nil {
+			ftype := stats.Mode().Type()
+			if fs.ModeCharDevice != ftype {
+				return fmt.Errorf(
+					"unsupported Host Device for uart mode: modename=%s modevalue=%s, uartkey=%s",
+					modeName, modeStrValue, uart.Key)
+			}
+			uart.Mode = UARTModeHostDevice
+			uart.ModeData = modeStartValueSplits[0]
+			return nil
+		}
 
 	}
 	return fmt.Errorf(
@@ -523,9 +594,23 @@ func NewUART(keyStr, typeStr, portStr, irqStr, modeStr, modeDataStr string) (*UA
 	uart := UART{Key: key}
 	multierr := &multierror.Error{}
 	var err error
-	uart.Mode, err = UARTModeFromStringIfSupported(modeStr)
-	multierr = multierror.Append(multierr, err)
+
 	uart.ModeData = modeDataStr
+	uart.Mode, err = UARTModeFromStringIfSupported(modeStr)
+	if err != nil {
+		stats, errStat := os.Stat(modeStr)
+		Trace("stats: \nmodestr=%s \nstat=%s \nerr=%#v\n", modeDataStr, stats, err)
+		if errStat == nil {
+			ftype := stats.Mode().Type()
+			Trace("ftype: type=%s, modechar=%s", ftype, fs.ModeCharDevice)
+			if (fs.ModeDevice&ftype != 0) && (fs.ModeCharDevice&ftype != 0) {
+				uart.Mode = UARTModeHostDevice
+				uart.ModeData = modeStr
+				err = nil
+			}
+		}
+	}
+	multierr = multierror.Append(multierr, err)
 
 	if portStr != "" && irqStr != "" {
 

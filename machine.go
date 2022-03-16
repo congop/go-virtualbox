@@ -208,6 +208,13 @@ func (m *Machine) Delete() error {
 	return Manage().run("unregistervm", m.Name, "--delete")
 }
 
+func (m *Machine) Unregister() error {
+	if err := m.Poweroff(); err != nil {
+		return err
+	}
+	return Manage().run("unregistervm", m.Name)
+}
+
 var mutex sync.Mutex
 
 func vminfoAsPropMap(vmInfo io.Reader) (map[string]string, error) {
@@ -389,65 +396,67 @@ func CreateMachine(uuid, name, basefolder string) (*Machine, error) {
 }
 
 // Modify changes the settings of the machine.
-func (m *Machine) Modify() error {
-	args := []string{"modifyvm", m.Name,
-		"--firmware", "bios",
-		"--bioslogofadein", "off",
-		"--bioslogofadeout", "off",
-		"--bioslogodisplaytime", "0",
-		"--biosbootmenu", "disabled",
+func (m *Machine) Modify(override ...CmdArg) error {
+	cmdArgs := CmdArgs{}
+	args := []string{"modifyvm", m.Name}
+	cmdArgs.Append("--firmware", "bios")
+	cmdArgs.Append("--bioslogofadein", "off")
+	cmdArgs.Append("--bioslogofadeout", "off")
+	cmdArgs.Append("--bioslogodisplaytime", "0")
+	cmdArgs.Append("--biosbootmenu", "disabled")
 
-		"--ostype", m.OSType,
-		"--cpus", fmt.Sprintf("%d", m.CPUs),
-		"--memory", fmt.Sprintf("%d", m.Memory),
-		"--vram", fmt.Sprintf("%d", m.VRAM),
+	cmdArgs.Append("--ostype", m.OSType)
+	cmdArgs.Append("--cpus", fmt.Sprintf("%d", m.CPUs))
+	cmdArgs.Append("--memory", fmt.Sprintf("%d", m.Memory))
+	cmdArgs.Append("--vram", fmt.Sprintf("%d", m.VRAM))
 
-		"--acpi", m.Flag.Get(ACPI),
-		"--ioapic", m.Flag.Get(IOAPIC),
-		"--rtcuseutc", m.Flag.Get(RTCUSEUTC),
-		"--cpuhotplug", m.Flag.Get(CPUHOTPLUG),
-		"--pae", m.Flag.Get(PAE),
-		"--longmode", m.Flag.Get(LONGMODE),
-		//TODO check cause error VBoxManage: error: Unknown option: --synthcpu
-		//"--synthcpu", m.Flag.Get(SYNTHCPU),
-		"--hpet", m.Flag.Get(HPET),
-		"--hwvirtex", m.Flag.Get(HWVIRTEX),
-		"--triplefaultreset", m.Flag.Get(TRIPLEFAULTRESET),
-		"--nestedpaging", m.Flag.Get(NESTEDPAGING),
-		"--largepages", m.Flag.Get(LARGEPAGES),
-		"--vtxvpid", m.Flag.Get(VTXVPID),
-		"--vtxux", m.Flag.Get(VTXUX),
-		"--accelerate3d", m.Flag.Get(ACCELERATE3D),
-	}
+	cmdArgs.Append("--acpi", m.Flag.Get(ACPI))
+	cmdArgs.Append("--ioapic", m.Flag.Get(IOAPIC))
+	cmdArgs.Append("--rtcuseutc", m.Flag.Get(RTCUSEUTC))
+	cmdArgs.Append("--cpuhotplug", m.Flag.Get(CPUHOTPLUG))
+	cmdArgs.Append("--pae", m.Flag.Get(PAE))
+	cmdArgs.Append("--longmode", m.Flag.Get(LONGMODE))
+	//TODO check cause error VBoxManage: error: Unknown option: --synthcpu
+	//"--synthcpu", m.Flag.Get(SYNTHCPU),
+	cmdArgs.Append("--hpet", m.Flag.Get(HPET))
+	cmdArgs.Append("--hwvirtex", m.Flag.Get(HWVIRTEX))
+	cmdArgs.Append("--triplefaultreset", m.Flag.Get(TRIPLEFAULTRESET))
+	cmdArgs.Append("--nestedpaging", m.Flag.Get(NESTEDPAGING))
+	cmdArgs.Append("--largepages", m.Flag.Get(LARGEPAGES))
+	cmdArgs.Append("--vtxvpid", m.Flag.Get(VTXVPID))
+	cmdArgs.Append("--vtxux", m.Flag.Get(VTXUX))
+	cmdArgs.Append("--accelerate3d", m.Flag.Get(ACCELERATE3D))
 
 	for i, dev := range m.BootOrder {
 		if i > 3 {
 			break // Only four slots `--boot{1,2,3,4}`. Ignore the rest.
 		}
-		args = append(args, fmt.Sprintf("--boot%d", i+1), dev)
+		cmdArgs.Append(fmt.Sprintf("--boot%d", i+1), dev)
 	}
 
 	for i, nic := range m.NICs {
 		n := i + 1
-		args = append(args,
-			fmt.Sprintf("--nic%d", n), string(nic.Network),
-			fmt.Sprintf("--nictype%d", n), string(nic.Hardware),
-			fmt.Sprintf("--cableconnected%d", n), "on")
+		cmdArgs.Append(fmt.Sprintf("--nic%d", n), string(nic.Network))
+		cmdArgs.Append(fmt.Sprintf("--nictype%d", n), string(nic.Hardware))
+		cmdArgs.Append(fmt.Sprintf("--cableconnected%d", n), "on")
 		if nic.MacAddr != "" {
-			args = append(args, fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
+			cmdArgs.Append(fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
 		}
 		if nic.Network == NICNetHostonly {
-			args = append(args, fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
+			cmdArgs.Append(fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
 		} else if nic.Network == NICNetBridged {
-			args = append(args, fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
+			cmdArgs.Append(fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
 		}
 	}
 
-	uartsCmdParams, err := m.UARTs.ModifyVMCommandParameters()
+	uartsCmdArgs, err := m.UARTs.ModifyVMCmdArgs()
 	if err != nil {
 		return errors.Wrap(err, "Error getting UARTs Modify VM Command Parameters")
 	}
-	args = append(args, uartsCmdParams...)
+	cmdArgs.AppendCmdArgs(uartsCmdArgs...)
+	cmdArgs.AppendOverride(override...)
+
+	args = append(args, cmdArgs.Args()...)
 
 	if stdout, stderr, err := Manage().runOutErr(args...); err != nil {
 		return errors.Wrapf(err,
@@ -483,6 +492,16 @@ func (m *Machine) SetNIC(n int, nic NIC) error {
 		args = append(args, fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
 	} else if nic.Network == NICNetBridged {
 		args = append(args, fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
+	} else if nic.Network == NICNetNAT {
+		if nic.NetworkName != "" {
+			//[--nat-network<1-N> <network name>]
+			args = append(args, fmt.Sprintf("--nat-network%d", n), nic.NetworkName)
+		}
+	} else if nic.Network == NICNetInternal {
+		if nic.NetworkName != "" {
+			//[--intnet<1-N> <network name>]
+			args = append(args, fmt.Sprintf("--intnet%d", n), nic.NetworkName)
+		}
 	}
 	return Manage().run(args...)
 }

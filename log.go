@@ -7,3 +7,4 @@ func noLog(string, ...interface{}) {}
 
 // Debug is the Logger currently in use.
 var Debug LogFunc = noLog
+var Trace LogFunc = noLog

@@ -3,6 +3,7 @@ package virtualbox
 // NIC represents a virtualized network interface card.
 type NIC struct {
 	Network       NICNetwork
+	NetworkName   string
 	Hardware      NICHardware
 	HostInterface string // The host interface name to bind to in 'hostonly' and 'bridged' mode
 	MacAddr       string

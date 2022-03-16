@@ -38,15 +38,15 @@ func GetGuestProperty(vm string, prop string) (string, error) {
 		out, stderr, err = Manage().runOutErr("guestproperty", "get", vm, prop)
 	}
 
-	Debug("Manage() stderr: \n\tstrerr='%s' \n\tstdour='%s' \n\terr=%v", stderr, out, err)
+	Trace("Manage() stderr: \n\tstrerr=%q \n\tstdour=%q \n\terr=%v", stderr, out, err)
 
 	if err != nil {
 		return "", err
 	}
 	out = strings.TrimSpace(out)
-	Debug("out (trimmed): '%s'", out)
+	Trace("out (trimmed): '%s'", out)
 	var match = getRegexp.FindStringSubmatch(out)
-	Debug("match:", match)
+	Trace("match: %v", match)
 	if len(match) != 2 {
 		return "",
 			fmt.Errorf("no match with get guestproperty output:"+
@@ -67,7 +67,7 @@ func GetGuestProperty(vm string, prop string) (string, error) {
 func WaitGuestProperty(vm string, prop string) (string, string, error) {
 	var out string
 	var err error
-	Debug("WaitGuestProperty(): wait on '%s'", prop)
+	Trace("WaitGuestProperty(): wait on '%s'", prop)
 	if Manage().isGuest() {
 		_, err = Manage().setOpts(sudo(true)).runOut("guestproperty", "wait", prop)
 		if err != nil {
@@ -80,7 +80,7 @@ func WaitGuestProperty(vm string, prop string) (string, string, error) {
 		return "", "", err
 	}
 	out = strings.TrimSpace(out)
-	Debug("WaitGuestProperty(): out (trimmed): '%s'", out)
+	Trace("WaitGuestProperty(): out (trimmed): %q", out)
 	var match = waitRegexp.FindStringSubmatch(out)
 	Debug("WaitGuestProperty(): match:", match)
 	if len(match) != 3 {
@@ -115,10 +115,10 @@ func WaitGuestProperties(vm string, propPattern string, done chan bool, wg *sync
 		defer wg.Done()
 
 		for {
-			Debug("WaitGetProperties(): waiting for: '%s' changes", propPattern)
+			Trace("WaitGetProperties(): waiting for: '%s' changes", propPattern)
 			name, value, err := WaitGuestProperty(vm, propPattern)
 			if err != nil {
-				log.Printf("WaitGetProperties(): err=%v", err)
+				Debug("WaitGetProperties(): err=%v", err)
 				return
 			}
 			prop := GuestProperty{name, value}
