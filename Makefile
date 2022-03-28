@@ -76,14 +76,15 @@ endif
 ## Linting & scanning --
 
 #GOMETALINTER_NAME := gometalinter.v2
+GOMETALINTER_VERSION := v1.45.2
 GOMETALINTER_NAME := golangci-lint
-GOMETALINTER := $(GOPATH)/bin/$(GOMETALINTER_NAME)$(EXE)
+#GOMETALINTER := $(GOPATH)/bin/$(GOMETALINTER_NAME)$(EXE)
 
-$(GOMETALINTER):
-	build/install-golangci-lint.sh
+GOMETALINTER:
+	build/install-golangci-lint.sh $(GOMETALINTER_VERSION)
 
 .PHONY: lint
-lint: $(GOMETALINTER)
+lint: GOMETALINTER
 	$(GOPATH)/bin/golangci-lint run
 
 ## Release -- FIXME not yet ready

@@ -309,6 +309,11 @@ func GetMachine(id string) (*Machine, error) {
 			nic.HostInterface = propMap[fmt.Sprintf("hostonlyadapter%d", i)]
 		} else if nic.Network == NICNetBridged {
 			nic.HostInterface = propMap[fmt.Sprintf("bridgeadapter%d", i)]
+		} else if nic.Network == NICNetNAT {
+			// TODO set with( --natnet1 "default") result in (natnet1="nat") what should we map some where
+			nic.NetworkName = propMap[fmt.Sprintf("natnet%d", i)]
+		} else if nic.Network == NICNetNATNetwork {
+			nic.NetworkName = propMap[fmt.Sprintf("nat-network%d", i)]
 		}
 		m.NICs = append(m.NICs, nic)
 	}
@@ -436,16 +441,8 @@ func (m *Machine) Modify(override ...CmdArg) error {
 
 	for i, nic := range m.NICs {
 		n := i + 1
-		cmdArgs.Append(fmt.Sprintf("--nic%d", n), string(nic.Network))
-		cmdArgs.Append(fmt.Sprintf("--nictype%d", n), string(nic.Hardware))
-		cmdArgs.Append(fmt.Sprintf("--cableconnected%d", n), "on")
-		if nic.MacAddr != "" {
-			cmdArgs.Append(fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
-		}
-		if nic.Network == NICNetHostonly {
-			cmdArgs.Append(fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
-		} else if nic.Network == NICNetBridged {
-			cmdArgs.Append(fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
+		if err := appendNicParams(n, nic, &cmdArgs); err != nil {
+			return err
 		}
 	}
 
@@ -478,31 +475,48 @@ func (m *Machine) DelNATPF(n int, name string) error {
 	return Manage().run("controlvm", m.Name, fmt.Sprintf("natpf%d", n), "delete", name)
 }
 
-// SetNIC set the n-th NIC.
-func (m *Machine) SetNIC(n int, nic NIC) error {
-	args := []string{"modifyvm", m.Name,
-		fmt.Sprintf("--nic%d", n), string(nic.Network),
-		fmt.Sprintf("--nictype%d", n), string(nic.Hardware),
-		fmt.Sprintf("--cableconnected%d", n), "on",
-	}
+func appendNicParams(n int, nic NIC, cmdArgs *CmdArgs) error {
+	cmdArgs.Append(fmt.Sprintf("--nic%d", n), string(nic.Network))
+	cmdArgs.Append(fmt.Sprintf("--nictype%d", n), string(nic.Hardware))
+	cmdArgs.Append(fmt.Sprintf("--cableconnected%d", n), "on")
 	if nic.MacAddr != "" {
-		args = append(args, fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
+		cmdArgs.Append(fmt.Sprintf("--macaddress%d", n), nic.MacAddr)
 	}
 	if nic.Network == NICNetHostonly {
-		args = append(args, fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
+		cmdArgs.Append(fmt.Sprintf("--hostonlyadapter%d", n), nic.HostInterface)
 	} else if nic.Network == NICNetBridged {
-		args = append(args, fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
+		cmdArgs.Append(fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
 	} else if nic.Network == NICNetNAT {
 		if nic.NetworkName != "" {
+			//[--natnet<1-N> <network>|default]
+			cmdArgs.Append(fmt.Sprintf("--natnet%d", n), nic.NetworkName)
+		} else {
+			cmdArgs.Append(fmt.Sprintf("--natnet%d", n), "default")
+		}
+	} else if nic.Network == NICNetNATNetwork {
+		if nic.NetworkName != "" {
 			//[--nat-network<1-N> <network name>]
-			args = append(args, fmt.Sprintf("--nat-network%d", n), nic.NetworkName)
+			cmdArgs.Append(fmt.Sprintf("--nat-network%d", n), nic.NetworkName)
 		}
 	} else if nic.Network == NICNetInternal {
 		if nic.NetworkName != "" {
 			//[--intnet<1-N> <network name>]
-			args = append(args, fmt.Sprintf("--intnet%d", n), nic.NetworkName)
+			cmdArgs.Append(fmt.Sprintf("--intnet%d", n), nic.NetworkName)
 		}
 	}
+	return nil
+}
+
+// SetNIC set the n-th NIC.
+func (m *Machine) SetNIC(rank int, nic NIC) error {
+	cmdArgs := CmdArgs{}
+	if err := appendNicParams(rank, nic, &cmdArgs); err != nil {
+		return err
+	}
+
+	args := []string{"modifyvm", m.Name}
+	args = append(args, cmdArgs.Args()...)
+	Trace("SetNic -- VBoxManage : args=%v", args)
 	return Manage().run(args...)
 }
 

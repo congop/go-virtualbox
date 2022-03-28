@@ -19,6 +19,8 @@ const (
 	NICNetDisconnected = NICNetwork("null")
 	// NICNetNAT when the NIC is NAT-ed to access the external network.
 	NICNetNAT = NICNetwork("nat")
+	// NICNetNAT when the NIC is NAT-ed to access the external network using a natnetwork.
+	NICNetNATNetwork = NICNetwork("natnetwork")
 	// NICNetBridged when the NIC is the bridge to the external network.
 	NICNetBridged = NICNetwork("bridged")
 	// NICNetInternal when the NIC does not have access to the external network.
