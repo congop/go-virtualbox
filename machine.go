@@ -552,6 +552,16 @@ func (m *Machine) AttachStorage(ctlName string, medium StorageMedium) error {
 	)
 }
 
+// DetachStorage detaches a storage medium from the named storage controller.
+func (m *Machine) DetachStorage(ctlName string, medium StorageMedium) error {
+	return Manage().run("storageattach", m.Name, "--storagectl", ctlName,
+		"--port", fmt.Sprintf("%d", medium.Port),
+		"--device", fmt.Sprintf("%d", medium.Device),
+		"--type", string(medium.DriveType),
+		"--medium", "none",
+	)
+}
+
 // SetExtraData attaches custom string to the VM.
 func (m *Machine) SetExtraData(key, val string) error {
 	return Manage().run("setextradata", m.Name, key, val)
