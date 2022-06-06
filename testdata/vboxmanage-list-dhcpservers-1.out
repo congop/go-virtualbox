@@ -3,4 +3,20 @@ IP:             192.168.56.100
 NetworkMask:    255.255.255.0
 lowerIPAddress: 192.168.56.101
 upperIPAddress: 192.168.56.254
+Enabled:        No
+
+NetworkName:    HostInterfaceNetworking-vboxnet5
+Dhcpd IP:       192.168.61.1
+LowerIPAddress: 192.168.61.50
+UpperIPAddress: 192.168.61.200
+NetworkMask:    255.255.255.0
 Enabled:        Yes
+Global Configuration:
+    minLeaseTime:     default
+    defaultLeaseTime: default
+    maxLeaseTime:     default
+    Forced options:   None
+    Suppressed opts.: None
+        1/legacy: 255.255.255.0
+Groups:               None
+Individual Configs:   None

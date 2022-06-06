@@ -2,8 +2,12 @@ package virtualbox
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"strings"
+
+	"github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 )
 
 // DHCP server info.
@@ -13,6 +17,12 @@ type DHCP struct {
 	LowerIP     net.IP
 	UpperIP     net.IP
 	Enabled     bool
+}
+
+func (dhcp DHCP) String() string {
+	return fmt.Sprintf(
+		"DHCP[%s, net=%s, start=%s stop=%s, enable=%t]",
+		dhcp.NetworkName, dhcp.IPv4.String(), dhcp.LowerIP.String(), dhcp.LowerIP.String(), dhcp.Enabled)
 }
 
 func addDHCP(kind, name string, d DHCP) error {
@@ -47,13 +57,13 @@ func DHCPs() (map[string]*DHCP, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	s := bufio.NewScanner(strings.NewReader(out))
 	m := map[string]*DHCP{}
 	dhcp := &DHCP{}
 	for s.Scan() {
 		line := s.Text()
 		if line == "" {
-			m[dhcp.NetworkName] = dhcp
 			dhcp = &DHCP{}
 			continue
 		}
@@ -61,18 +71,31 @@ func DHCPs() (map[string]*DHCP, error) {
 		if res == nil {
 			continue
 		}
-		switch key, val := res[1], res[2]; key {
-		case "NetworkName":
+		// output has change with version changes
+		// - lowerIPAd.. /uppperIpAd.. now starting with upper case letter
+		// - IP -> Dhcpd IP
+		// so solution: using lowercase key for comparison
+		switch key, val := strings.ToLower(res[1]), res[2]; key {
+		case "networkname":
 			dhcp.NetworkName = val
-		case "IP":
-			dhcp.IPv4.IP = net.ParseIP(val)
-		case "upperIPAddress":
-			dhcp.UpperIP = net.ParseIP(val)
-		case "lowerIPAddress":
-			dhcp.LowerIP = net.ParseIP(val)
-		case "NetworkMask":
+			if _, alreadyIn := m[dhcp.NetworkName]; alreadyIn {
+				return nil, errors.Errorf(
+					"DHCPs -- illegal state, dhcp server already parse: "+
+						"\n\tnetworkname=%s \n\talready-parsed=%s \n\tout=%s",
+					dhcp.NetworkName, maps.Keys(m), string(out))
+			}
+			// saving here so that we do not miss the last entry in case it is not
+			// followed by an empty line
+			m[dhcp.NetworkName] = dhcp
+		case "ip", "dhcpd ip":
+			dhcp.IPv4.IP = net.ParseIP(val).To4()
+		case "upperipaddress":
+			dhcp.UpperIP = net.ParseIP(val).To4()
+		case "loweripaddress":
+			dhcp.LowerIP = net.ParseIP(val).To4()
+		case "networkmask":
 			dhcp.IPv4.Mask = ParseIPv4Mask(val)
-		case "Enabled":
+		case "enabled":
 			dhcp.Enabled = (val == stringYes)
 		}
 	}
