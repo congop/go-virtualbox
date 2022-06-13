@@ -34,21 +34,23 @@ type Flag int
 
 // Flag names in lowercases to be consistent with VBoxManage options.
 const (
-	ACPI Flag = 1 << iota
-	IOAPIC
-	RTCUSEUTC
-	CPUHOTPLUG
-	PAE
-	LONGMODE
+	ACPI       Flag = 1 << iota // --apic on|off: Enables and disables I/O APIC. With I/O APIC, operating systems can use more than 16 interrupt requests (IRQs) thus avoiding IRQ sharing for improved reliability. This setting is enabled by default.
+	IOAPIC                      //--acpi on|off and --ioapic on|off: Determines whether the VM has ACPI and I/O APIC support.
+	RTCUSEUTC                   // --rtcuseutc on|off: Sets the real-time clock (RTC) to operate in UTC time
+	CPUHOTPLUG                  // -cpuhotplug on|off: Enables CPU hot-plugging. When enabled, virtual CPUs can be added to and removed from a virtual machine while it is running.
+	PAE                         // --pae on|off: Enables and disables PAE
+	LONGMODE                    // --longmode on|off: Enables and disables long mode.
 	SYNTHCPU
-	HPET
-	HWVIRTEX
-	TRIPLEFAULTRESET
-	NESTEDPAGING
-	LARGEPAGES
-	VTXVPID
-	VTXUX
-	ACCELERATE3D
+	HPET             // --hpet on|off: Enables and disables a High Precision Event Timer (HPET) which can replace the legacy system timers. This is turned off by default. Note that Windows supports a HPET only from Vista onwards.
+	HWVIRTEX         // --hwvirtex on|off: Enables and disables the use of hardware virtualization extensions, such as Intel VT-x or AMD-V, in the processor of your host system
+	TRIPLEFAULTRESET // --triplefaultreset on|off: Enables resetting of the guest instead of triggering a Guru Meditation. Some guests raise a triple fault to reset the CPU so sometimes this is desired behavior. Works only for non-SMP guests.
+	NESTEDPAGING     // --nestedpaging on|off: If hardware virtualization is enabled, this additional setting enables or disables the use of the nested paging feature in the processor of your host system
+	LARGEPAGES       // --largepages on|off: If hardware virtualization and nested paging are enabled, for Intel VT-x only, an additional performance improvement of up to 5% can be obtained by enabling this setting. This causes the hypervisor to use large pages to reduce TLB use and overhead.
+	VTXVPID          // -vtxvpid on|off: If hardware virtualization is enabled, for Intel VT-x only, this additional setting enables or disables the use of the tagged TLB (VPID) feature in the processor of your host system
+	VTXUX            // --vtxux on|off: If hardware virtualization is enabled, for Intel VT-x only, this setting enables or disables the use of the unrestricted guest mode feature for executing your guest.
+	ACCELERATE3D     // --accelerate3d on|off: If the Guest Additions are installed, this setting enables or disables hardware 3D acceleration.
+	NESTED_HW_VIRT   //--nested-hw-virt on|off: If hardware virtualization is enabled, this setting enables or disables passthrough of hardware virtualization features to the guest.
+	X2APIC           // --x2apic on|off: Enables and disables CPU x2APIC support. CPU x2APIC support helps operating systems run more efficiently on high core count configurations, and optimizes interrupt distribution in virtualized environments. This setting is enabled by default. Disable this setting when using host or guest operating systems that are incompatible with x2APIC support.
 )
 
 // Convert bool to "on"/"off"
@@ -431,6 +433,7 @@ func (m *Machine) Modify(override ...CmdArg) error {
 	cmdArgs.Append("--vtxvpid", m.Flag.Get(VTXVPID))
 	cmdArgs.Append("--vtxux", m.Flag.Get(VTXUX))
 	cmdArgs.Append("--accelerate3d", m.Flag.Get(ACCELERATE3D))
+	cmdArgs.Append("--nested-hw-virt", m.Flag.Get(NESTED_HW_VIRT))
 
 	for i, dev := range m.BootOrder {
 		if i > 3 {
