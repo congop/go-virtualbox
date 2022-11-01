@@ -93,7 +93,7 @@ const (
 	DriveFDD = DriveType("fdd")
 )
 
-// UUIDOrMedium return this storagemedium UUID if available otherweise its medium
+// UUIDOrMedium return this storagemedium UUID if available otherwise its medium
 func (sm StorageMedium) UUIDOrMedium() string {
 	if sm.UUID == "" {
 		return sm.Medium

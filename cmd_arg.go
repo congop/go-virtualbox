@@ -3,7 +3,7 @@ package virtualbox
 //CmdArg models a command arg, which can be a flag or not.
 type CmdArg struct {
 	K             string                     //Args key. e.g. --accelerated
-	V             *string                    // V value. nil if arg daoe not allow value specification. Note that empty string "" is a valid value, and different from nil.
+	V             *string                    // V value. nil if arg does not allow value specification. Note that empty string "" is a valid value, and different from nil.
 	ToCmdArgParts func(K, V string) []string //
 	Del           bool                       // if true deleted, the arg will not be part of the final command
 }
@@ -48,7 +48,7 @@ func (cmdArgs *CmdArgs) AppendOverride(arg ...CmdArg) {
 }
 
 //Args returns an slice containing the args which can be use in a command execution context.
-//Args with multiple accurence are not supported we will be overriding values.
+//Args with multiple occurrence are not supported we will be overriding values.
 func (cmdArgs CmdArgs) Args() []string {
 	m := make(map[string]CmdArg, len(cmdArgs.args)+len(cmdArgs.overrides))
 	orderK := make([]string, 0, len(cmdArgs.args)+len(cmdArgs.overrides))
@@ -58,7 +58,7 @@ func (cmdArgs CmdArgs) Args() []string {
 			if !contains {
 				orderK = append(orderK, arg.K)
 			}
-			// yes we are always overriding --> multiple occurence are not supported
+			// yes we are always overriding --> multiple occurrences are not supported
 			m[arg.K] = arg
 		}
 	}

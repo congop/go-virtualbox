@@ -18,6 +18,8 @@ var (
 	reVMInfoLine      = regexp.MustCompile(`(?:"(.+)"|(.+))=(?:"(.*)"|(.*))`)
 	reColonLine       = regexp.MustCompile(`(.+):\s+(.*)`)
 	reMachineNotFound = regexp.MustCompile(`Could not find a registered machine named '(.+)'`)
+	// matches VBoxManage: error: Could not find a registered machine with UUID {f0e5424d-77d7-45c4-b5bb-9aadc379cdb0}
+	reMachineNotFoundByUuid = regexp.MustCompile(`Could not find a registered machine with UUID {.+}`)
 )
 
 // Manage returns the Command to run VBoxManage/VBoxControl.

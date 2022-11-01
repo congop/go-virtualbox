@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// UARTKey key used to indentify vm uart config [uart1|2|3|4].
+// UARTKey key used to identify vm uart config [uart1|2|3|4].
 type UARTKey string
 
 const (
@@ -79,7 +79,7 @@ func UARTKeyFromRank(rank uint8) (UARTKey, error) {
 	}
 }
 
-//BasicSerialComConfig config holds serial port io base a.k.a port and IRQ
+// BasicSerialComConfig config holds serial port io base a.k.a port and IRQ
 type BasicSerialComConfig struct {
 	Port uint
 	IRQ  uint

@@ -110,7 +110,7 @@ func (vbcmd command) runOut(args ...string) (string, error) {
 		var stderr bytes.Buffer
 		// Users of this module may not have a say on stdout/stderr
 		// But they usually are able to configure logging and Debug.
-		// We are therefore giving them the opportinuty to receive the
+		// We are therefore giving them the opportunity to receive the
 		// command run output
 		cmd.Stderr = &stderr
 		defer func() {

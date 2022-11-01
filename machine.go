@@ -108,12 +108,22 @@ func (m *Machine) Refresh() error {
 }
 
 // Start starts the machine.
-func (m *Machine) Start() error {
+func (m *Machine) Start(startVmParamOverrides ...CmdArg) error {
 	switch m.State {
 	case Paused:
 		return Manage().run("controlvm", m.Name, "resume")
 	case Poweroff, Saved, Aborted:
-		return Manage().run("startvm", m.Name, "--type", "headless")
+		startVmParams := CmdArgs{}
+		startVmParams.Append("--type", "headless")
+		for _, p := range startVmParamOverrides {
+			startVmParams.AppendOverride(p)
+		}
+		cmdArgs := make([]string, 0, len(startVmParams.args)+2)
+		cmdArgs = append(cmdArgs, "startvm", m.Name)
+		cmdArgs = append(cmdArgs, startVmParams.Args()...)
+
+		// default of no override: run("startvm", m.Name, "--type", "headless")
+		return Manage().run(cmdArgs...)
 	}
 	return nil
 }
@@ -255,7 +265,7 @@ func GetMachine(id string) (*Machine, error) {
 	stdout, stderr, err := Manage().runOutErr("showvminfo", id, "--machinereadable")
 	mutex.Unlock()
 	if err != nil {
-		if reMachineNotFound.FindString(stderr) != "" {
+		if reMachineNotFound.MatchString(stderr) || reMachineNotFoundByUuid.MatchString(stderr) {
 			return nil, ErrMachineNotExist
 		}
 		return nil, errors.Wrapf(err, "Error with showvminfo for id=%s, \nstderr:%s",
@@ -490,7 +500,17 @@ func appendNicParams(n int, nic NIC, cmdArgs *CmdArgs) error {
 	} else if nic.Network == NICNetBridged {
 		cmdArgs.Append(fmt.Sprintf("--bridgeadapter%d", n), nic.HostInterface)
 	} else if nic.Network == NICNetNAT {
-		if nic.NetworkName != "" {
+		if nic.NetworkName != "" && nic.NetworkName != "nat" {
+			// VBoxManage showvminfo fgn-2022-08-12T21-41-51Z-640d1e58423f --machinereadable
+			// will return a nat name.
+			// e.g.
+			//    natnet3="nat"
+			//    macaddress3="08002771DA47"
+			//    cableconnected3="on"
+			//    nic3="nat"
+			// in this case it is referring to default too.
+			// ! default is likely the only legal value.
+
 			//[--natnet<1-N> <network>|default]
 			cmdArgs.Append(fmt.Sprintf("--natnet%d", n), nic.NetworkName)
 		} else {

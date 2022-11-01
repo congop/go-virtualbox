@@ -17,7 +17,7 @@ func (p StringProvider) String() string {
 	return p()
 }
 
-// toVMInfoValueUARTn poduce vm info value for uart<1-N> format <IO Base hex>,<IRQ> as  in uart1="0x03f8,4"
+// toVMInfoValueUARTn produces vm info value for uart<1-N> format <IO Base hex>,<IRQ> as  in uart1="0x03f8,4"
 func (comConfig BasicSerialComConfig) toVMInfoValueUARTn() string {
 	return fmt.Sprintf("0x%04x,%d", comConfig.Port, comConfig.IRQ)
 }
