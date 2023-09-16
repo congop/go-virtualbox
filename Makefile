@@ -76,7 +76,7 @@ endif
 ## Linting & scanning --
 
 #GOMETALINTER_NAME := gometalinter.v2
-GOMETALINTER_VERSION := v1.46.2
+GOMETALINTER_VERSION := v1.53.3
 GOMETALINTER_NAME := golangci-lint
 #GOMETALINTER := $(GOPATH)/bin/$(GOMETALINTER_NAME)$(EXE)
 
