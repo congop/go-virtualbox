@@ -17,6 +17,31 @@ type NATNet struct {
 
 // NATNets gets all NAT networks in a  map keyed by NATNet.Name.
 func NATNets() (map[string]NATNet, error) {
+
+	// VBoxManage list natnets --long
+	// Virtualbox 6.xxx
+	// NetworkName:    sayanat
+	// IP:             10.12.0.1
+	// Network:        10.12.0.0/24
+	// IPv6 Enabled:   Yes
+	// IPv6 Prefix:    fd17:625c:f037:2::/64
+	// DHCP Enabled:   Yes
+	// Enabled:        Yes
+	// loopback mappings (ipv4)
+	//         127.0.0.1=2
+	//
+	// Virtualbox 7.0
+	// Name:         sayanat
+	// Enabled:      Yes
+	// Network:      10.12.0.0/24
+	// Gateway:      10.12.0.1
+	// DHCP Server:  Yes
+	// IPv6:         Yes
+	// IPv6 Prefix:  fd17:625c:f037:2::/64
+	// IPv6 Default: No
+	// loopback mappings (ipv4)
+	// 		127.0.0.1=2
+
 	out, err := Manage().runOut("list", "natnets")
 	if err != nil {
 		return nil, err
@@ -36,9 +61,9 @@ func NATNets() (map[string]NATNet, error) {
 			continue
 		}
 		switch key, val := res[1], res[2]; key {
-		case "NetworkName":
+		case "Name", "NetworkName":
 			n.Name = val
-		case "IP":
+		case "IP", "Gateway":
 			n.IPv4.IP = net.ParseIP(val)
 		case "Network":
 			_, ipnet, err := net.ParseCIDR(val)

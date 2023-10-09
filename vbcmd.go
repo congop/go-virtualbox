@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os/exec"
 	"runtime"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 type option func(Command)
@@ -78,10 +80,10 @@ func (vbcmd command) prepare(args []string) *exec.Cmd {
 func (vbcmd command) run(args ...string) error {
 	defer vbcmd.setOpts(sudo(false))
 	cmd := vbcmd.prepare(args)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if Verbose {
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
 		defer func() {
 			stdoutStr := stdout.String()
 			if stdoutStr != "" {
@@ -98,7 +100,9 @@ func (vbcmd command) run(args ...string) error {
 		if ee, ok := err.(*exec.Error); ok && ee == exec.ErrNotFound {
 			return ErrCommandNotFound
 		}
-		return err
+		return pkgerrors.Wrapf(err,
+			"command.run -- failed: \n\tcmd=%s \n\terr=%v \n\tstdout=%s \n\tstderr=%s",
+			cmd.String(), err, stdout.String(), stderr.String())
 	}
 	return nil
 }
